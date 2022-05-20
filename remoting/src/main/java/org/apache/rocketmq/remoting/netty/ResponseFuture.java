@@ -17,12 +17,13 @@
 package org.apache.rocketmq.remoting.netty;
 
 import io.netty.channel.Channel;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.rocketmq.remoting.InvokeCallback;
 import org.apache.rocketmq.remoting.common.SemaphoreReleaseOnlyOnce;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ResponseFuture {
     private final int opaque;
@@ -39,8 +40,15 @@ public class ResponseFuture {
     private volatile boolean sendRequestOK = true;
     private volatile Throwable cause;
 
+    /**
+     * @param channel        客户端 channel
+     * @param opaque         请求id
+     * @param timeoutMillis  超时时间
+     * @param invokeCallback 回调处理对象
+     * @param once           信号量释放操作封装对象
+     */
     public ResponseFuture(Channel channel, int opaque, long timeoutMillis, InvokeCallback invokeCallback,
-        SemaphoreReleaseOnlyOnce once) {
+                          SemaphoreReleaseOnlyOnce once) {
         this.opaque = opaque;
         this.processChannel = channel;
         this.timeoutMillis = timeoutMillis;
@@ -124,13 +132,13 @@ public class ResponseFuture {
     @Override
     public String toString() {
         return "ResponseFuture [responseCommand=" + responseCommand
-            + ", sendRequestOK=" + sendRequestOK
-            + ", cause=" + cause
-            + ", opaque=" + opaque
-            + ", processChannel=" + processChannel
-            + ", timeoutMillis=" + timeoutMillis
-            + ", invokeCallback=" + invokeCallback
-            + ", beginTimestamp=" + beginTimestamp
-            + ", countDownLatch=" + countDownLatch + "]";
+                + ", sendRequestOK=" + sendRequestOK
+                + ", cause=" + cause
+                + ", opaque=" + opaque
+                + ", processChannel=" + processChannel
+                + ", timeoutMillis=" + timeoutMillis
+                + ", invokeCallback=" + invokeCallback
+                + ", beginTimestamp=" + beginTimestamp
+                + ", countDownLatch=" + countDownLatch + "]";
     }
 }

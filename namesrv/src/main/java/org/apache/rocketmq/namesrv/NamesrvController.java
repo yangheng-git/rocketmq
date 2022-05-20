@@ -167,8 +167,7 @@ public class NamesrvController {
     private void registerProcessor() {
         if (namesrvConfig.isClusterTest()) {
 
-            this.remotingServer.registerDefaultProcessor(new ClusterTestRequestProcessor(this, namesrvConfig.getProductEnvName()),
-                    this.remotingExecutor);
+            this.remotingServer.registerDefaultProcessor(new ClusterTestRequestProcessor(this, namesrvConfig.getProductEnvName()),  this.remotingExecutor);
         } else {
             // 注册 缺省的协议处理器
             // 参数1：缺省协议处理器
