@@ -61,13 +61,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class NettyRemotingServer extends NettyRemotingAbstract implements RemotingServer {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(RemotingHelper.ROCKETMQ_REMOTING);
-
     // netty服务端启动对象
     private final ServerBootstrap serverBootstrap;
-
     // netty worker组线程池
     private final EventLoopGroup eventLoopGroupSelector;
-
     // netty boss组线程池， 一般只有一个线程
     private final EventLoopGroup eventLoopGroupBoss;
 
@@ -85,14 +82,11 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
 
     // 当向channel pipeline 添加handler 时，指定了group时，网络事件传播到 当前handler 时，由 分配给 handler 的线程执行
     private DefaultEventExecutorGroup defaultEventExecutorGroup;
-
     // 服务端绑定的端口
     private int port = 0;
-
     private static final String HANDSHAKE_HANDLER_NAME = "handshakeHandler";
     private static final String TLS_HANDLER_NAME = "sslHandler";
     private static final String FILE_REGION_ENCODER_NAME = "fileRegionEncoder";
-
 
     // 共享的处理器，多个channel 都使用同一个对象。
     // sharable handlers
@@ -469,6 +463,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         handshakeHandler = new HandshakeHandler(TlsSystemConfig.tlsMode);
         encoder = new NettyEncoder();
         connectionManageHandler = new NettyConnectManageHandler();
+        // 路由处理类
         serverHandler = new NettyServerHandler();
     }
 
@@ -535,6 +530,10 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         }
     }
 
+
+    /**
+     * 客户端发送的请求。最终会到这个类的方法里。是netty 处理后的数据。
+     */
     @ChannelHandler.Sharable
     class NettyServerHandler extends SimpleChannelInboundHandler<RemotingCommand> {
 

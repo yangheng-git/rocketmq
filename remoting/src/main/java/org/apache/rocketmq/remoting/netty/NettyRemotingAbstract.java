@@ -132,6 +132,8 @@ public abstract class NettyRemotingAbstract {
     }
 
     /**
+     * 处理网络请求的入口
+     * <p>
      * Entry of incoming command processing.
      *
      * <p>
@@ -151,10 +153,10 @@ public abstract class NettyRemotingAbstract {
         final RemotingCommand cmd = msg;
         if (cmd != null) {
             switch (cmd.getType()) {
-                case REQUEST_COMMAND:
+                case REQUEST_COMMAND: // 客户端发起的请求，走这里
                     processRequestCommand(ctx, cmd);
                     break;
-                case RESPONSE_COMMAND:
+                case RESPONSE_COMMAND: // 客户端响应的请求，走这里
                     processResponseCommand(ctx, cmd);
                     break;
                 default:
@@ -181,31 +183,47 @@ public abstract class NettyRemotingAbstract {
 
 
     /**
+     * 客户端发起的请求，走这里
+     * <p>
      * Process incoming request command issued by remote peer.
      *
      * @param ctx channel handler context.
      * @param cmd request command.
      */
     public void processRequestCommand(final ChannelHandlerContext ctx, final RemotingCommand cmd) {
+        // 根据业务代码 找到 合适的处理器， 和线程池资源 pair
         final Pair<NettyRequestProcessor, ExecutorService> matched = this.processorTable.get(cmd.getCode());
+
+        // 如果未找到 code对应的pair, 则使用缺省处理器。 nameServer 并未注册code对应的处理器，使用缺省。
         final Pair<NettyRequestProcessor, ExecutorService> pair = null == matched ? this.defaultRequestProcessor : matched;
+        // 获取请求ID
         final int opaque = cmd.getOpaque();
 
         if (pair != null) {
+            // 封装一个 runnable, 核心逻入口。
+            // 先看下面的流程
             Runnable run = new Runnable() {
                 @Override
                 public void run() {
                     try {
+                        // RPC hook before
                         doBeforeRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd);
+
+                        // callback , 封装 响应客户端的逻辑。
                         final RemotingResponseCallback callback = new RemotingResponseCallback() {
                             @Override
                             public void callback(RemotingCommand response) {
+                                // RPC hook after
                                 doAfterRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd, response);
+
                                 if (!cmd.isOnewayRPC()) {
                                     if (response != null) {
+                                        // 将请求id 设置到 response.opaque内，客户端根据 opaque 值，在responseFutureTable 找到 responseFuture 完成结果的交互。
                                         response.setOpaque(opaque);
+                                        // 设置当前请求 是响应类型。
                                         response.markResponseType();
                                         try {
+                                            // 将数据 交给 netty IO 线程，完成 数据 写和刷。
                                             ctx.writeAndFlush(response);
                                         } catch (Throwable e) {
                                             log.error("process request over, but response failed", e);
@@ -217,8 +235,21 @@ public abstract class NettyRemotingAbstract {
                                 }
                             }
                         };
+
+                        // nameServer 使用的是 DefaultRequestProcessor, 是一个 AsyncNettyRequestProcessor 子类。会进入条件。
                         if (pair.getObject1() instanceof AsyncNettyRequestProcessor) {
+                            // DefaultRequestProcessor
                             AsyncNettyRequestProcessor processor = (AsyncNettyRequestProcessor) pair.getObject1();
+
+                            /**
+                             *异步处理请求，  AsyncNettyRequestProcessor 中这个方法的逻辑其实是同步代码，除非子类覆盖这个方法。
+                             *然而 DefaultRequestProcessor 没有复写方法，
+                             *
+                             * @param ctx              ctx
+                             * @param request          客户端数据封装对象
+                             * @param responseCallback callback 封装响应客户端的逻辑
+                             * @throws Exception
+                             */
                             processor.asyncProcessRequest(ctx, cmd, callback);
                         } else {
                             NettyRequestProcessor processor = pair.getObject1();
@@ -239,6 +270,7 @@ public abstract class NettyRemotingAbstract {
                 }
             };
 
+            // 失败策略
             if (pair.getObject1().rejectRequest()) {
                 final RemotingCommand response = RemotingCommand.createResponseCommand(RemotingSysResponseCode.SYSTEM_BUSY,
                         "[REJECTREQUEST]system busy, start flow control for a while");
@@ -248,7 +280,11 @@ public abstract class NettyRemotingAbstract {
             }
 
             try {
+                // 将 runnable 和 channel ，请求cmd 一起封装成RequestTask 对象。
                 final RequestTask requestTask = new RequestTask(run, ctx.channel(), cmd);
+
+                // 注意，这里从IO线程 切换到 业务线程了！！！
+                // 获取处理器对应的线程池，将task提交， task执行时，会执行 runnable.run();
                 pair.getObject2().submit(requestTask);
             } catch (RejectedExecutionException e) {
                 if ((System.currentTimeMillis() % 10000) == 0) {
@@ -372,6 +408,8 @@ public abstract class NettyRemotingAbstract {
     public abstract ExecutorService getCallbackExecutor();
 
     /**
+     * 扫描 responseTable 表，将过期的responseFuture 移除。
+     *
      * <p>
      * This method is periodically invoked to scan and expire deprecated request.
      * </p>
