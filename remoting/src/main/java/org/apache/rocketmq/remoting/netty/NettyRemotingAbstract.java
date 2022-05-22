@@ -215,7 +215,7 @@ public abstract class NettyRemotingAbstract {
                             public void callback(RemotingCommand response) {
                                 // RPC hook after
                                 doAfterRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd, response);
-
+                                // 如果是单向请求，就不响应了
                                 if (!cmd.isOnewayRPC()) {
                                     if (response != null) {
                                         // 将请求id 设置到 response.opaque内，客户端根据 opaque 值，在responseFutureTable 找到 responseFuture 完成结果的交互。
@@ -242,6 +242,9 @@ public abstract class NettyRemotingAbstract {
                             AsyncNettyRequestProcessor processor = (AsyncNettyRequestProcessor) pair.getObject1();
 
                             /**
+                             *
+                             *【 #TODO 重点，网络请求处理的业务， 大部分都在这里】
+                             *
                              *异步处理请求，  AsyncNettyRequestProcessor 中这个方法的逻辑其实是同步代码，除非子类覆盖这个方法。
                              *然而 DefaultRequestProcessor 没有复写方法，
                              *

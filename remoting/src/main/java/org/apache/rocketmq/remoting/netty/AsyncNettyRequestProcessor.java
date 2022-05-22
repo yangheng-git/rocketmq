@@ -23,13 +23,21 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 public abstract class AsyncNettyRequestProcessor implements NettyRequestProcessor {
 
     /**
+     * AsyncNettyRequestProcessor 中这个方法的逻辑其实是同步代码，除非子类覆盖这个方法。
+     *
      * @param ctx              ctx
      * @param request          客户端数据封装对象
      * @param responseCallback callback 封装响应客户端的逻辑
      * @throws Exception
      */
     public void asyncProcessRequest(ChannelHandlerContext ctx, RemotingCommand request, RemotingResponseCallback responseCallback) throws Exception {
+        /**
+         * 看这个类的实现
+         * @see org.apache.rocketmq.namesrv.processor.DefaultRequestProcessor#processRequest
+         */
         RemotingCommand response = processRequest(ctx, request);
+
+        // 拿到结果后，执行callback
         responseCallback.callback(response);
     }
 }
