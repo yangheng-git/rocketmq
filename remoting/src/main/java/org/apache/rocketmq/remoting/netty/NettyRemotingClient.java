@@ -377,19 +377,47 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
         }
     }
 
+
+    /**
+     * 同步
+     *
+     * @param addr          服务端地址
+     * @param request       网络传输对象 （封装请求数据）
+     * @param timeoutMillis 超时时间限制
+     * @return
+     * @throws InterruptedException
+     * @throws RemotingConnectException
+     * @throws RemotingSendRequestException
+     * @throws RemotingTimeoutException
+     */
     @Override
     public RemotingCommand invokeSync(String addr, final RemotingCommand request, long timeoutMillis)
             throws InterruptedException, RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException {
+        // 开始时间
         long beginStartTime = System.currentTimeMillis();
+        // 获取或者创建 客户端与服务端（addr） 的通道 channel
         final Channel channel = this.getAndCreateChannel(addr);
+
+        // channel 通道正常。
         if (channel != null && channel.isActive()) {
             try {
+                // 执行rpcHook before 。 框架留给用户的扩展点。
                 doBeforeRpcHooks(addr, request);
+                // 计算耗时， 如果当前耗时 已经超过 timeoutMillis限制。 则直接异常。 不再进行通信。
                 long costTime = System.currentTimeMillis() - beginStartTime;
                 if (timeoutMillis < costTime) {
                     throw new RemotingTimeoutException("invokeSync call timeout");
                 }
+
+
+                /**
+                 *
+                 * @param channel       客户端channel
+                 * @param request       网络请求对象，remotingCommand
+                 * @param timeoutMillis 超时时长
+                 */
                 RemotingCommand response = this.invokeSyncImpl(channel, request, timeoutMillis - costTime);
+                // 执行 rpcHook after 相关方法。
                 doAfterRpcHooks(RemotingHelper.parseChannelRemoteAddr(channel), request, response);
                 return response;
             } catch (RemotingSendRequestException e) {
