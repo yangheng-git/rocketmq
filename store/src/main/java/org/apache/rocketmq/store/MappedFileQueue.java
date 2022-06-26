@@ -54,6 +54,11 @@ public class MappedFileQueue {
     // 当前目录下最后一条msg存储时间
     private volatile long storeTimestamp = 0;
 
+    /**
+     * @param storePath                 ../store/commitlog
+     * @param mappedFileSize            默认1g
+     * @param allocateMappedFileService allocateMappedFileService
+     */
     public MappedFileQueue(final String storePath, int mappedFileSize, AllocateMappedFileService allocateMappedFileService) {
         this.storePath = storePath;
         this.mappedFileSize = mappedFileSize;
@@ -536,12 +541,7 @@ public class MappedFileQueue {
             if (firstMappedFile != null && lastMappedFile != null) {
                 // 条件成立，说明offset 没能命中 list中的mappedFile
                 if (offset < firstMappedFile.getFileFromOffset() || offset >= lastMappedFile.getFileFromOffset() + this.mappedFileSize) {
-                    LOG_ERROR.warn("Offset not matched. Request offset: {}, firstOffset: {}, lastOffset: {}, mappedFileSize: {}, mappedFiles count: {}",
-                            offset,
-                            firstMappedFile.getFileFromOffset(),
-                            lastMappedFile.getFileFromOffset() + this.mappedFileSize,
-                            this.mappedFileSize,
-                            this.mappedFiles.size());
+                    LOG_ERROR.warn("Offset not matched. Request offset: {}, firstOffset: {}, lastOffset: {}, mappedFileSize: {}, mappedFiles count: {}", offset, firstMappedFile.getFileFromOffset(), lastMappedFile.getFileFromOffset() + this.mappedFileSize, this.mappedFileSize, this.mappedFiles.size());
                 } else {
                     // 正常的逻辑
 
