@@ -23,6 +23,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
@@ -38,11 +39,20 @@ public class IndexService {
     /**
      * Maximum times to attempt index file creation.
      */
+
     private static final int MAX_TRY_IDX_CREATE = 3;
+
     private final DefaultMessageStore defaultMessageStore;
+
+    // 创建索引文件。 每个索引文件包含的 哈希桶数量 500w
     private final int hashSlotNum;
+
+    // 创建索引文件。 每个索引文件包含的 索引条目数量 ： 2000w
     private final int indexNum;
+
+    // 索引文件存储目录。 ../store/index
     private final String storePath;
+    // 索引对象集合 （目录下的每个文件 都有一个 indexFile 对象）
     private final ArrayList<IndexFile> indexFileList = new ArrayList<IndexFile>();
     private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
@@ -50,8 +60,7 @@ public class IndexService {
         this.defaultMessageStore = store;
         this.hashSlotNum = store.getMessageStoreConfig().getMaxHashSlotNum();
         this.indexNum = store.getMessageStoreConfig().getMaxIndexNum();
-        this.storePath =
-            StorePathConfigHelper.getStorePathIndex(store.getMessageStoreConfig().getStorePathRootDir());
+        this.storePath = StorePathConfigHelper.getStorePathIndex(store.getMessageStoreConfig().getStorePathRootDir());
     }
 
     public boolean load(final boolean lastExitOK) {
@@ -66,8 +75,7 @@ public class IndexService {
                     f.load();
 
                     if (!lastExitOK) {
-                        if (f.getEndTimestamp() > this.defaultMessageStore.getStoreCheckpoint()
-                            .getIndexMsgTimestamp()) {
+                        if (f.getEndTimestamp() > this.defaultMessageStore.getStoreCheckpoint().getIndexMsgTimestamp()) {
                             f.destroy(0);
                             continue;
                         }
@@ -87,6 +95,11 @@ public class IndexService {
         return true;
     }
 
+    /**
+     * 删除过期文件
+     *
+     * @param offset commitlog 内最早的消息 phyOffset (物理偏移量)
+     */
     public void deleteExpiredFile(long offset) {
         Object[] files = null;
         try {
@@ -96,6 +109,7 @@ public class IndexService {
             }
 
             long endPhyOffset = this.indexFileList.get(0).getEndPhyOffset();
+            // 条件成立。 说明索引目录内 存在过期的索引文件
             if (endPhyOffset < offset) {
                 files = this.indexFileList.toArray();
             }
@@ -106,6 +120,8 @@ public class IndexService {
         }
 
         if (files != null) {
+            // 待删除的文件
+            //  (files.length - 1)  因为 要保留最后一个正在写的indexFile 。 不可能都删了
             List<IndexFile> fileList = new ArrayList<IndexFile>();
             for (int i = 0; i < (files.length - 1); i++) {
                 IndexFile f = (IndexFile) files[i];
@@ -115,7 +131,7 @@ public class IndexService {
                     break;
                 }
             }
-
+            // 删除
             this.deleteExpiredFile(fileList);
         }
     }
@@ -198,13 +214,28 @@ public class IndexService {
         return topic + "#" + key;
     }
 
+
+    /**
+     * 上层 DefaultMessageStore 内部启动的 异步线程  会 将 commitLog 内的新的 msg  包装成 dispatchRequest
+     * 最终交给当前方法
+     *
+     * @param req 类似 msg  只不过没有body
+     */
     public void buildIndex(DispatchRequest req) {
+        // 获取当前 索引文件 。 如果list内不存在file 或者 当前file 写满的话， 则创建新的 file
         IndexFile indexFile = retryGetAndCreateIndexFile();
+
         if (indexFile != null) {
+            // 获取索引文件 最后一条消息 offset
             long endPhyOffset = indexFile.getEndPhyOffset();
             DispatchRequest msg = req;
+
+            // 主题
             String topic = msg.getTopic();
+            // key
             String keys = msg.getKeys();
+
+            // 条件成立。 说明当前req已经在索引文件内 追加过 数据了
             if (msg.getCommitLogOffset() < endPhyOffset) {
                 return;
             }
@@ -219,7 +250,14 @@ public class IndexService {
                     return;
             }
 
+            // 为消息创建 唯一索引
             if (req.getUniqKey() != null) {
+                /**
+                 * @param indexFile 当前顺序写的索引文件
+                 * @param msg 消息
+                 * @param idxKey 主题#唯一索引
+                 * @return
+                 */
                 indexFile = putKey(indexFile, msg, buildKey(topic, req.getUniqKey()));
                 if (indexFile == null) {
                     log.error("putKey error commitlog {} uniqkey {}", req.getCommitLogOffset(), req.getUniqKey());
@@ -227,6 +265,7 @@ public class IndexService {
                 }
             }
 
+            // 自定义 keys  索引插入的逻辑入口
             if (keys != null && keys.length() > 0) {
                 String[] keyset = keys.split(MessageConst.KEY_SEPARATOR);
                 for (int i = 0; i < keyset.length; i++) {
@@ -245,6 +284,13 @@ public class IndexService {
         }
     }
 
+    /**
+     *
+     * @param indexFile 当前顺序写的索引文件
+     * @param msg 消息
+     * @param idxKey 主题#唯一索引
+     * @return
+     */
     private IndexFile putKey(IndexFile indexFile, DispatchRequest msg, String idxKey) {
         for (boolean ok = indexFile.putKey(idxKey, msg.getCommitLogOffset(), msg.getStoreTimestamp()); !ok; ) {
             log.warn("Index file [" + indexFile.getFileName() + "] is full, trying to create another one");
@@ -254,6 +300,7 @@ public class IndexService {
                 return null;
             }
 
+            // indexFile 插入
             ok = indexFile.putKey(idxKey, msg.getCommitLogOffset(), msg.getStoreTimestamp());
         }
 
@@ -313,12 +360,8 @@ public class IndexService {
 
         if (indexFile == null) {
             try {
-                String fileName =
-                    this.storePath + File.separator
-                        + UtilAll.timeMillisToHumanString(System.currentTimeMillis());
-                indexFile =
-                    new IndexFile(fileName, this.hashSlotNum, this.indexNum, lastUpdateEndPhyOffset,
-                        lastUpdateIndexTimestamp);
+                String fileName = this.storePath + File.separator + UtilAll.timeMillisToHumanString(System.currentTimeMillis());
+                indexFile = new IndexFile(fileName, this.hashSlotNum, this.indexNum, lastUpdateEndPhyOffset, lastUpdateIndexTimestamp);
                 this.readWriteLock.writeLock().lock();
                 this.indexFileList.add(indexFile);
             } catch (Exception e) {
