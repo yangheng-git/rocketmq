@@ -35,15 +35,27 @@ import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+/**
+ * 负载均衡具体的代码
+ */
 public abstract class RebalanceImpl {
     protected static final InternalLogger log = ClientLogger.getLog();
+    // 分配到当前消费者的队列消息
+    // key : messageQueue
+    // val : processQueue (队列在消费端的快照)
     protected final ConcurrentMap<MessageQueue, ProcessQueue> processQueueTable = new ConcurrentHashMap<MessageQueue, ProcessQueue>(64);
+
+    // 主题队列分布信息
     protected final ConcurrentMap<String/* topic */, Set<MessageQueue>> topicSubscribeInfoTable =
             new ConcurrentHashMap<String, Set<MessageQueue>>();
+
+    // 消费者订阅数据
     protected final ConcurrentMap<String /* topic */, SubscriptionData> subscriptionInner =
             new ConcurrentHashMap<String, SubscriptionData>();
     protected String consumerGroup;
     protected MessageModel messageModel;
+
+    // 分配策略
     protected AllocateMessageQueueStrategy allocateMessageQueueStrategy;
     protected MQClientInstance mQClientFactory;
 
@@ -328,6 +340,7 @@ public abstract class RebalanceImpl {
                      * @param mqSet   分配给当前消费者的结果
                      * @param isOrder 是否有序
                      * @return boolean  true 表示 分配给当前消费者的队列发生变化。 false 表示无变化。
+                     *  无变化，表示不需要做负载均衡
                      */
                     boolean changed = this.updateProcessQueueTableInRebalance(topic, allocateResultSet, isOrder);
                     if (changed) {
@@ -368,31 +381,52 @@ public abstract class RebalanceImpl {
      */
     private boolean updateProcessQueueTableInRebalance(final String topic, final Set<MessageQueue> mqSet,
                                                        final boolean isOrder) {
+        // 当前消费者 消费的队列 是否有变化
         boolean changed = false;
 
         Iterator<Entry<MessageQueue, ProcessQueue>> it = this.processQueueTable.entrySet().iterator();
         while (it.hasNext()) {
             Entry<MessageQueue, ProcessQueue> next = it.next();
+            // 队列元数据
             MessageQueue mq = next.getKey();
+            // 队列在消费端的 快照
             ProcessQueue pq = next.getValue();
 
+            // 条件成立。 说明该mq 是本次rbl分配算法 计算的主题
             if (mq.getTopic().equals(topic)) {
+
+                // mq  messageQueue  消费队列
+                // 条件成立， mqSet 最新分配给当前消费者的结果 （指定主题），  不包含 mq, 说明该mq经过rbl计算之后，被分配到其他consumer了
                 if (!mqSet.contains(mq)) {
+                    // 将pg删除状态设置为true, 消费任务 会一直检查该状态， 如果该状态 变为删除 ，消费任务，会立马退出
                     pq.setDropped(true);
+
+                    // 删除 这个 “MQ”
                     if (this.removeUnnecessaryMessageQueue(mq, pq)) {
+                        // 从 processQueueTable 移除kv
                         it.remove();
+                        // 说明 当前消费者 消费的队列 发生了变化
                         changed = true;
                         log.info("doRebalance, {}, remove unnecessary mq, {}", consumerGroup, mq);
                     }
+
+                    // 当 mq 还归属当前消费者， 回执 else if
+                    // 条件成立， 说明 pg 已经 两分钟 未发生过 到服务器 拉消息的请求了。 可能出bug了
                 } else if (pq.isPullExpired()) {
                     switch (this.consumeType()) {
                         case CONSUME_ACTIVELY:
                             break;
                         case CONSUME_PASSIVELY:
+                            // 设置pg 删除状态 true, 消费任务检查后会退出
                             pq.setDropped(true);
+                            // 将当前队列相关的信息移除
+                            // 1. 消费进度持久化
+                            // 2. offsetStore 内 当前mq的进度 删除
                             if (this.removeUnnecessaryMessageQueue(mq, pq)) {
+                                // 移除当前kv
                                 it.remove();
                                 changed = true;
+                                // 出了问题怎么办。 重启
                                 log.error("[BUG]doRebalance, {}, remove unnecessary mq, {}, because pull is pause, so try to fixed it",
                                         consumerGroup, mq);
                             }

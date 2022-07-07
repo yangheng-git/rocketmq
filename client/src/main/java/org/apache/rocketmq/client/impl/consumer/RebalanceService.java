@@ -21,25 +21,36 @@ import org.apache.rocketmq.client.log.ClientLogger;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.logging.InternalLogger;
 
+/**
+ * 重负载均衡服务
+ */
 public class RebalanceService extends ServiceThread {
     private static long waitInterval =
-        Long.parseLong(System.getProperty(
-            "rocketmq.client.rebalance.waitInterval", "20000"));
+            Long.parseLong(System.getProperty(
+                    "rocketmq.client.rebalance.waitInterval", "20000"));
     private final InternalLogger log = ClientLogger.getLog();
+    /**
+     * 客户端实例
+     */
     private final MQClientInstance mqClientFactory;
 
     public RebalanceService(MQClientInstance mqClientFactory) {
         this.mqClientFactory = mqClientFactory;
     }
 
+
+    /**
+     * 每20秒做一次 负载均衡操作
+     */
     @Override
     public void run() {
         log.info(this.getServiceName() + " service started");
 
         while (!this.isStopped()) {
-            // wait 20秒
+            // wait 20秒 避免线程将cpu 资源占死
             this.waitForRunning(waitInterval);
             // 执行负载均衡算法
+            // 调用客户端实例的 负载均衡方法， 客户端实例 会遍历注册在客户端实例上的全部消费者。 调用消费者的负载均衡方法
             this.mqClientFactory.doRebalance();
         }
 
