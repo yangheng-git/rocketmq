@@ -198,14 +198,25 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
         return result;
     }
 
+    /**
+     * 提交消费任务方法
+     * @param msgs （一般情况下， 从服务器pull下来的这批消息）
+     * @param processQueue （消息归属mq在消费者端的processQueue , 注意，提交消费任务之前，msgs 已经加入到该 pq 内了）
+     * @param messageQueue 消息归属队列
+     * @param dispatchToConsume 并发消费 此参数无效
+     */
     @Override
     public void submitConsumeRequest(
         final List<MessageExt> msgs,
         final ProcessQueue processQueue,
         final MessageQueue messageQueue,
         final boolean dispatchToConsume) {
+
+        //此参数控制 一个消费任务，可消费的消息数量 (默认1)
         final int consumeBatchSize = this.defaultMQPushConsumer.getConsumeMessageBatchMaxSize();
+
         if (msgs.size() <= consumeBatchSize) {
+            //CASE  msgs内部的消息数 是小于等于 consumeBatchSize 值的， 那直接封装一个 “消费任务” 提交到消费线程池即可。
             ConsumeRequest consumeRequest = new ConsumeRequest(msgs, processQueue, messageQueue);
             try {
                 this.consumeExecutor.submit(consumeRequest);
@@ -213,6 +224,8 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 this.submitConsumeRequestLater(consumeRequest);
             }
         } else {
+            // CASE：msgs 消息数 > consumeBatchSize，这里逻辑 就是按照 consumeBatchSize 规则 将 msgs 拆分成多个 “消费任务” 提交到 消费线程池。
+
             for (int total = 0; total < msgs.size(); ) {
                 List<MessageExt> msgThis = new ArrayList<MessageExt>(consumeBatchSize);
                 for (int i = 0; i < consumeBatchSize; i++, total++) {

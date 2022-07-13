@@ -62,12 +62,17 @@ public abstract class ServiceThread implements Runnable {
 
     public abstract String getServiceName();
 
+    /**
+     * 启动线程
+     */
     public void start() {
         log.info("Try to start service thread:{} started:{} lastThread:{}", getServiceName(), started.get(), thread);
         if (!started.compareAndSet(false, true)) {
             return;
         }
         stopped = false;
+        // 把自己封装成线程。并启动
+        // 运行逻辑在 run方法中
         this.thread = new Thread(this, getServiceName());
         this.thread.setDaemon(isDaemon);
         this.thread.start();

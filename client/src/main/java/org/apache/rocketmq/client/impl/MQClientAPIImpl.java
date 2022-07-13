@@ -666,6 +666,17 @@ public class MQClientAPIImpl {
         return sendResult;
     }
 
+    /**
+     * @param addr              拉消息请求的服务器地址
+     * @param requestHeader     拉消息业务参数封装对象
+     * @param timeoutMillis     网络调用超时限制 30秒
+     * @param communicationMode RPC调用模式， 这里是 异步模式
+     * @param pullCallback      拉消息结果处理对象
+     * @return
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public PullResult pullMessage(
             final String addr,
             final PullMessageRequestHeader requestHeader,
@@ -673,6 +684,8 @@ public class MQClientAPIImpl {
             final CommunicationMode communicationMode,
             final PullCallback pullCallback
     ) throws RemotingException, MQBrokerException, InterruptedException {
+
+        // 创建网络层传输对象， RemotingCommand。 该对象封装了requestHeader
         RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.PULL_MESSAGE, requestHeader);
 
         switch (communicationMode) {
@@ -692,18 +705,42 @@ public class MQClientAPIImpl {
         return null;
     }
 
+    /**
+     * 异步
+     * @param addr
+     * @param request
+     * @param timeoutMillis
+     * @param pullCallback
+     * @throws RemotingException
+     * @throws InterruptedException
+     */
     private void pullMessageAsync(
             final String addr,
             final RemotingCommand request,
             final long timeoutMillis,
             final PullCallback pullCallback
     ) throws RemotingException, InterruptedException {
+
+        // invokerCallback 最重要
+        // invokerAsync 内部会为本次请求创建 一个 ResponseFuture 对象， 放入到remotingClient 的 responseFutureTable 中 。
+        // key 是 request.opaque
+        // ResponseFuture {1. opaque 2.invokerCallback 3.response }
+        // 当服务器响应 客户端时，会根据response.opaque 值 找到 responseFuture 对象，将结果设置到 responseFuture.response 字段
+        // 再接下来，会检查 responseFuture.invokeCallback 是否有值， 如果有值，则说明需要回调处理。
+        // 再接下来，就会将该invokeCallback 封装成任务， 提交到 remotingClient 的 公共线程内执行， 执行invokeCallback operationComplete 方法。
+        // 传递参数 responseFuture
         this.remotingClient.invokeAsync(addr, request, timeoutMillis, new InvokeCallback() {
+            /**
+             * 调用时机， 服务器端响应客户端之后
+             * @param responseFuture
+             */
             @Override
             public void operationComplete(ResponseFuture responseFuture) {
+
                 RemotingCommand response = responseFuture.getResponseCommand();
                 if (response != null) {
                     try {
+
                         PullResult pullResult = MQClientAPIImpl.this.processPullResponse(response, addr);
                         assert pullResult != null;
                         pullCallback.onSuccess(pullResult);

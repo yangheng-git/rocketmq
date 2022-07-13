@@ -27,6 +27,9 @@ import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.common.utils.ThreadUtils;
 
+/**
+ * 拉消息服务
+ */
 public class PullMessageService extends ServiceThread {
     private final InternalLogger log = ClientLogger.getLog();
     private final LinkedBlockingQueue<PullRequest> pullRequestQueue = new LinkedBlockingQueue<PullRequest>();
@@ -77,6 +80,7 @@ public class PullMessageService extends ServiceThread {
     }
 
     private void pullMessage(final PullRequest pullRequest) {
+        // DefaultMQPushConsumerImpl 拉取消息实现类
         final MQConsumerInner consumer = this.mQClientFactory.selectConsumer(pullRequest.getConsumerGroup());
         if (consumer != null) {
             DefaultMQPushConsumerImpl impl = (DefaultMQPushConsumerImpl) consumer;
@@ -85,6 +89,11 @@ public class PullMessageService extends ServiceThread {
             log.warn("No matched consumer for the PullRequest {}, drop it", pullRequest);
         }
     }
+
+    /**
+     * MQClientInstance 会调用 PullMessageService的 start() 方法。
+     * 进而开启线程。执行本方法内的逻辑。就是不停的去拉取消息
+     */
 
     @Override
     public void run() {

@@ -59,6 +59,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+/**
+ * 客户端实例
+ */
 public class MQClientInstance {
     private final static long LOCK_TIMEOUT_MILLIS = 3000;
     private final InternalLogger log = ClientLogger.getLog();
@@ -124,7 +127,7 @@ public class MQClientInstance {
     // 客户端协议处理器，用于处理IO 事件
     private final ClientRemotingProcessor clientRemotingProcessor;
 
-    // 拉消息服务
+    // 拉消息服务 【消费者】
     private final PullMessageService pullMessageService;
 
     // 消息负载均衡服务
@@ -1150,6 +1153,9 @@ public class MQClientInstance {
         return null;
     }
 
+    // 参数1：brokerName
+    // 参数2：this.recalculatePullFromWhichNode(mq)  （可能0，也可能 1）
+    // 参数3：false
     public FindBrokerResult findBrokerAddressInSubscribe(
             final String brokerName,
             final long brokerId,
@@ -1159,9 +1165,13 @@ public class MQClientInstance {
         boolean slave = false;
         boolean found = false;
 
+        // 获取 该broker的地址分布 map
         HashMap<Long/* brokerId */, String/* address */> map = this.brokerAddrTable.get(brokerName);
+
         if (map != null && !map.isEmpty()) {
+            // 获取指定brokerId 的 addr
             brokerAddr = map.get(brokerId);
+
             slave = brokerId != MixAll.MASTER_ID;
             found = brokerAddr != null;
 
