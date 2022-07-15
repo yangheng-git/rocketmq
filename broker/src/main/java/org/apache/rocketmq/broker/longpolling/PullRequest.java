@@ -21,13 +21,23 @@ import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageFilter;
 
+/**
+ * 长轮询 pullRequest 对象
+ */
 public class PullRequest {
+    // 客户端请求RemotingCommand 对象
     private final RemotingCommand requestCommand;
+    // 服务器和客户端的会话channel
     private final Channel clientChannel;
+    // 长轮询超时限制 15秒
     private final long timeoutMillis;
+    // 长轮询 开始时间
     private final long suspendTimestamp;
+    // requestCommand header 提取出来的 本次 pull 队列的offset
     private final long pullFromThisOffset;
+    // 该主题的订阅数据
     private final SubscriptionData subscriptionData;
+    // 消息过滤器， 一般是tagCode 过滤
     private final MessageFilter messageFilter;
 
     public PullRequest(RemotingCommand requestCommand, Channel clientChannel, long timeoutMillis, long suspendTimestamp,
